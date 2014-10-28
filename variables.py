@@ -13,12 +13,14 @@ import utils
 
 @sim.column('zones', 'sum_residential_units')
 def sum_residential_units(buildings):
-    return buildings.residential_units.groupby(buildings.zone_id).sum().apply(np.log1p)
+    return buildings.residential_units.groupby(buildings.zone_id).\
+        sum().apply(np.log1p)
 
 
 @sim.column('zones', 'sum_job_spaces')
 def sum_nonresidential_units(buildings):
-    return buildings.job_spaces.groupby(buildings.zone_id).sum().apply(np.log1p)
+    return buildings.job_spaces.groupby(buildings.zone_id).\
+        sum().apply(np.log1p)
 
 
 @sim.column('zones', 'population')
@@ -34,19 +36,22 @@ def jobs(jobs):
 
 @sim.column('zones', 'ave_lot_sqft')
 def ave_lot_sqft(buildings, zones):
-    s = buildings.unit_lot_size.groupby(buildings.zone_id).quantile().apply(np.log1p)
+    s = buildings.unit_lot_size.groupby(buildings.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
 @sim.column('zones', 'ave_income')
 def ave_income(households, zones):
-    s = households.income.groupby(households.zone_id).quantile().apply(np.log1p)
+    s = households.income.groupby(households.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
 @sim.column('zones', 'hhsize')
 def hhsize(households, zones):
-    s = households.persons.groupby(households.zone_id).quantile().apply(np.log1p)
+    s = households.persons.groupby(households.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
@@ -169,7 +174,7 @@ def vacant_residential_units(buildings, jobs):
 
 @sim.column('households', 'income_quartile', cache=True)
 def income_quartile(households):
-    return pd.Series(pd.qcut(households.income, 4).labels,
+    return pd.Series(pd.qcut(households.income, 4, labels=False),
                      index=households.index)
 
 
@@ -193,8 +198,16 @@ def zone_id(jobs, buildings):
 #####################
 
 
-def parcel_average_price(use):
-    return misc.reindex(sim.get_table('zones_prices')[use],
+def parcel_average_price(use, quantile=None):
+    if use == "residential":
+        buildings = sim.get_table("buildings")
+        price = buildings\
+            .residential_sales_price[buildings.general_type == "Residential"]\
+            .groupby(buildings.zone_id).quantile(quantile)
+    else:
+        price = sim.get_table('zones_prices')[use]
+
+    return misc.reindex(price,
                         sim.get_table('parcels').zone_id)
 
 
@@ -211,6 +224,12 @@ def parcel_is_allowed(form):
 @sim.column('parcels', 'max_far', cache=True)
 def max_far(parcels, scenario):
     return utils.conditional_upzone(scenario, "max_far", "far_up").\
+        reindex(parcels.index).fillna(0)
+
+
+@sim.column('parcels', 'max_dua', cache=True)
+def max_dua(parcels, scenario):
+    return utils.conditional_upzone(scenario, "max_dua", "dua_up").\
         reindex(parcels.index).fillna(0)
 
 
@@ -242,14 +261,34 @@ def total_sqft(parcels, buildings):
         reindex(parcels.index).fillna(0)
 
 
+# returns the oldest building on the land and fills missing values with 9999 -
+# for use with historical preservation
+@sim.column('parcels', 'oldest_building')
+def oldest_building(parcels, buildings):
+    return buildings.year_built.groupby(buildings.parcel_id).min().\
+        reindex(parcels.index).fillna(9999)
+
+
+# for debugging reasons this is split out into its own function
+@sim.column('parcels', 'building_purchase_price_sqft')
+def building_purchase_price_sqft():
+    return parcel_average_price("residential", .6)
+
+
+# for debugging reasons this is split out into its own function
+@sim.column('parcels', 'building_purchase_price')
+def building_purchase_price(parcels):
+    return (parcels.total_sqft * parcels.building_purchase_price_sqft).\
+        reindex(parcels.index).fillna(0)
+
+
 @sim.column('parcels', 'land_cost')
 def land_cost(parcels):
-    # TODO
-    # this needs to account for cost for the type of building it is
-    return (parcels.total_sqft * parcel_average_price("residential")).\
-        reindex(parcels.index).fillna(0)
+    return parcels.building_purchase_price + parcels.parcel_size * 20.0
 
 
 @sim.column('parcels', 'ave_unit_size')
 def ave_unit_size(parcels, zones):
-    return misc.reindex(zones.ave_unit_sqft, parcels.zone_id)
+    s = misc.reindex(zones.ave_unit_sqft, parcels.zone_id)
+    s[s < 800] = 800
+    return s

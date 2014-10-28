@@ -13,12 +13,14 @@ import utils
 
 @sim.column('zones', 'sum_residential_units')
 def sum_residential_units(buildings):
-    return buildings.residential_units.groupby(buildings.zone_id).sum().apply(np.log1p)
+    return buildings.residential_units.groupby(buildings.zone_id).\
+        sum().apply(np.log1p)
 
 
 @sim.column('zones', 'sum_job_spaces')
 def sum_nonresidential_units(buildings):
-    return buildings.job_spaces.groupby(buildings.zone_id).sum().apply(np.log1p)
+    return buildings.job_spaces.groupby(buildings.zone_id).\
+        sum().apply(np.log1p)
 
 
 @sim.column('zones', 'population')
@@ -34,19 +36,22 @@ def jobs(jobs):
 
 @sim.column('zones', 'ave_lot_sqft')
 def ave_lot_sqft(buildings, zones):
-    s = buildings.unit_lot_size.groupby(buildings.zone_id).quantile().apply(np.log1p)
+    s = buildings.unit_lot_size.groupby(buildings.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
 @sim.column('zones', 'ave_income')
 def ave_income(households, zones):
-    s = households.income.groupby(households.zone_id).quantile().apply(np.log1p)
+    s = households.income.groupby(households.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
 @sim.column('zones', 'hhsize')
 def hhsize(households, zones):
-    s = households.persons.groupby(households.zone_id).quantile().apply(np.log1p)
+    s = households.persons.groupby(households.zone_id).\
+        quantile().apply(np.log1p)
     return s.reindex(zones.index).fillna(s.quantile())
 
 
@@ -169,7 +174,7 @@ def vacant_residential_units(buildings, jobs):
 
 @sim.column('households', 'income_quartile', cache=True)
 def income_quartile(households):
-    return pd.Series(pd.qcut(households.income, 4).labels,
+    return pd.Series(pd.qcut(households.income, 4, labels=False),
                      index=households.index)
 
 
